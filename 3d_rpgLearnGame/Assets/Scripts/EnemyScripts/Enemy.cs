@@ -11,16 +11,20 @@ public class Enemy : LivingEntity
 
     private NavMeshAgent pathfinder;
     private Transform target;
+    private LivingEntity targetEntity;
     private Material skinMaterial;
 
     private Color originalColor;
 
     private float attackDistanceThreshold = .5f;
     private float timeBetweenAttack = 1;
+    private float damage = 1;
 
     private float nextAttackTime;
     private float myCollisionRadius;
     private float targetCollisionRadius;
+
+    private bool hasTarget;
 
     protected override void Start()
     {
@@ -29,30 +33,47 @@ public class Enemy : LivingEntity
         skinMaterial = GetComponentInChildren<Renderer>().material;
         originalColor = skinMaterial.color;
 
-        currentState = State.Chasing;
-        target = GameObject.FindGameObjectWithTag("Player").transform;
+        if (GameObject.FindGameObjectWithTag("Player") != null)
+        {
+            currentState = State.Chasing;
+            hasTarget = true;
 
-        myCollisionRadius = GetComponent<CapsuleCollider>().radius;
+            target = GameObject.FindGameObjectWithTag("Player").transform;
+            targetEntity = target.GetComponent<LivingEntity>();
+            targetEntity.OnDeath += OnTargetDeath;
 
-        targetCollisionRadius = target.GetComponent<CapsuleCollider>().radius;
+            myCollisionRadius = GetComponent<CapsuleCollider>().radius;
 
-        //targetCollisionRadius =  myCollisionRadius;
+            targetCollisionRadius = target.GetComponent<CapsuleCollider>().radius;
 
-        StartCoroutine(UpdatePath());
+            //targetCollisionRadius =  myCollisionRadius;
+
+            StartCoroutine(UpdatePath());
+        }
     }
 
     void Update()
     {
-        if (Time.time > nextAttackTime)
+        if (hasTarget)
         {
-            float sqrDistToTarget = (target.position - transform.position).sqrMagnitude;
-
-            if (sqrDistToTarget < Mathf.Pow(attackDistanceThreshold + myCollisionRadius + targetCollisionRadius, 2))
+            if (Time.time > nextAttackTime)
             {
-                nextAttackTime = Time.time + timeBetweenAttack;
-                StartCoroutine(Attack());
+                float sqrDistToTarget = (target.position - transform.position).sqrMagnitude;
+
+                if (sqrDistToTarget < Mathf.Pow(attackDistanceThreshold + myCollisionRadius + targetCollisionRadius, 2))
+                {
+                    nextAttackTime = Time.time + timeBetweenAttack;
+                    StartCoroutine(Attack());
+                }
             }
         }
+
+    }
+
+    private void OnTargetDeath()
+    {
+        hasTarget = false;
+        currentState = State.Idle;
     }
 
     IEnumerator Attack()
@@ -62,16 +83,22 @@ public class Enemy : LivingEntity
 
         Vector3 originalPosition = transform.position;
         Vector3 dirToTarget = (target.position - transform.position).normalized;
-        Vector3 attackPosition = target.position - dirToTarget * (myCollisionRadius );
+        Vector3 attackPosition = target.position - dirToTarget * (myCollisionRadius);
         //Vector3 attackPosition = target.position;
 
         float attackSpeed = 4f;
         float percent = 0;
 
-
         skinMaterial.color = Color.gray;
+        bool hasAppliedDamage = false;
+
         while (percent <= 1)
         {
+            if(percent >= .5f && !hasAppliedDamage)
+            {
+                hasAppliedDamage = true;
+                targetEntity.TakeDamage(damage);
+            }
             percent += Time.deltaTime * attackSpeed;
             float interpolation = (-Mathf.Pow(percent, 2) + percent) * 4;
             transform.position = Vector3.Lerp(originalPosition, attackPosition, interpolation);
@@ -87,12 +114,13 @@ public class Enemy : LivingEntity
     IEnumerator UpdatePath()
     {
         float refreshRate = .25f;
-        while (target != null)
+
+        while (hasTarget)
         {
             if (currentState == State.Chasing)
             {
                 Vector3 dirToTarget = (target.position - transform.position).normalized;
-                Vector3 targetPosition = target.position - dirToTarget * (myCollisionRadius + targetCollisionRadius + attackDistanceThreshold/2);
+                Vector3 targetPosition = target.position - dirToTarget * (myCollisionRadius + targetCollisionRadius + attackDistanceThreshold / 2);
                 //Vector3 targetPosition = new Vector3(target.position.x, 0f, target.position.z);
                 if (!dead)
                 {
